@@ -339,6 +339,7 @@ export default {
   'Please enter a parameter': '请输入参数',
   'UDF Resources': 'UDF资源',
   'Upload Resources': '上传资源',
+  'Instructions Link Text': '使用说明',
   Instructions: '使用说明',
   'Please enter a instructions': '请输入使用说明',
   'Please enter a UDF function name': '请输入UDF函数名称',

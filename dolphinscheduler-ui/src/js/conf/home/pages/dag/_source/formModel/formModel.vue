@@ -1,23 +1,25 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+* Licensed to the Apache Software Foundation (ASF) under one or more
+* contributor license agreements.  See the NOTICE file distributed with
+* this work for additional information regarding copyright ownership.
+* The ASF licenses this file to You under the Apache License, Version 2.0
+* (the "License"); you may not use this file except in compliance with
+* the License.  You may obtain a copy of the License at
+*
+*    http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 <template>
   <div class="form-model-wrapper" v-clickoutside="_handleClose">
     <div class="title-box">
-      <span class="name">{{ $t("Current node settings") }}</span>
+      <span class="name">{{ $t('Current node settings') }}
+        <a v-if="helpUrlEnable(nodeData.taskType)" class="helper-link" target="_blank"
+           :href="helpUrl(nodeData.taskType)">?{{nodeData.taskType}} {{ $t('Instructions Link Text') }}</a></span>
       <span class="go-subtask">
         <!-- Component can't pop up box to do component processing -->
         <m-log
@@ -26,21 +28,21 @@
           :task-instance-id="taskInstance.id"
         >
           <template slot="history"
-            ><a href="javascript:" @click="_seeHistory"
-              ><em class="ansicon el-icon-alarm-clock"></em
-              ><em>{{ $t("View history") }}</em></a
-            ></template
+          ><a href="javascript:" @click="_seeHistory"
+          ><em class="ansicon el-icon-alarm-clock"></em
+          ><em>{{ $t('View history') }}</em></a
+          ></template
           >
           <template slot="log"
-            ><a href="javascript:"
-              ><em class="ansicon el-icon-document"></em
-              ><em>{{ $t("View log") }}</em></a
-            ></template
+          ><a href="javascript:"
+          ><em class="ansicon el-icon-document"></em
+          ><em>{{ $t('View log') }}</em></a
+          ></template
           >
         </m-log>
         <a href="javascript:" @click="_goSubProcess" v-if="_isGoSubProcess"
-          ><em class="ansicon ri-node-tree"></em
-          ><em>{{ $t("Enter this child node") }}</em></a
+        ><em class="ansicon ri-node-tree"></em
+        ><em>{{ $t('Enter this child node') }}</em></a
         >
       </span>
     </div>
@@ -51,7 +53,7 @@
 
         <!-- Node name -->
         <m-list-box>
-          <div slot="text">{{ $t("Node name") }}</div>
+          <div slot="text">{{ $t('Node name') }}</div>
           <div slot="content">
             <el-input
               type="text"
@@ -67,7 +69,7 @@
         </m-list-box>
 
         <m-list-box v-if="fromTaskDefinition">
-          <div slot="text">{{ $t("Task Type") }}</div>
+          <div slot="text">{{ $t('Task Type') }}</div>
           <div slot="content">
             <el-select
               @change="changeTaskType"
@@ -91,22 +93,24 @@
 
         <!-- Running sign -->
         <m-list-box>
-          <div slot="text">{{ $t("Run flag") }}</div>
+          <div slot="text">{{ $t('Run flag') }}</div>
           <div slot="content">
             <el-radio-group v-model="runFlag" size="small">
               <el-radio :label="'YES'" :disabled="isDetails">{{
-                $t("Normal")
-              }}</el-radio>
+                $t('Normal')
+                }}
+              </el-radio>
               <el-radio :label="'NO'" :disabled="isDetails">{{
-                $t("Prohibition execution")
-              }}</el-radio>
+                $t('Prohibition execution')
+                }}
+              </el-radio>
             </el-radio-group>
           </div>
         </m-list-box>
 
         <!-- description -->
         <m-list-box>
-          <div slot="text">{{ $t("Description") }}</div>
+          <div slot="text">{{ $t('Description') }}</div>
           <div slot="content">
             <el-input
               :rows="2"
@@ -121,7 +125,7 @@
 
         <!-- Task priority -->
         <m-list-box>
-          <div slot="text">{{ $t("Task priority") }}</div>
+          <div slot="text">{{ $t('Task priority') }}</div>
           <div slot="content">
             <span class="label-box" style="width: 193px; display: inline-block">
               <m-priority v-model="taskInstancePriority"></m-priority>
@@ -131,12 +135,12 @@
 
         <!-- Worker group and environment -->
         <m-list-box>
-          <div slot="text">{{ $t("Worker group") }}</div>
+          <div slot="text">{{ $t('Worker group') }}</div>
           <div slot="content">
             <span class="label-box" style="width: 193px; display: inline-block">
               <m-worker-groups v-model="workerGroup"></m-worker-groups>
             </span>
-            <span class="text-b">{{ $t("Environment Name") }}</span>
+            <span class="text-b">{{ $t('Environment Name') }}</span>
             <m-related-environment
               v-model="environmentCode"
               :workerGroup="workerGroup"
@@ -148,19 +152,19 @@
 
         <!-- Number of failed retries -->
         <m-list-box v-if="nodeData.taskType !== 'SUB_PROCESS'">
-          <div slot="text">{{ $t("Number of failed retries") }}</div>
+          <div slot="text">{{ $t('Number of failed retries') }}</div>
           <div slot="content">
             <m-select-input
               v-model="maxRetryTimes"
               :list="[0, 1, 2, 3, 4]"
             ></m-select-input>
-            <span>({{ $t("Times") }})</span>
-            <span class="text-b">{{ $t("Failed retry interval") }}</span>
+            <span>({{ $t('Times') }})</span>
+            <span class="text-b">{{ $t('Failed retry interval') }}</span>
             <m-select-input
               v-model="retryInterval"
               :list="[1, 10, 30, 60, 120]"
             ></m-select-input>
-            <span>({{ $t("Minute") }})</span>
+            <span>({{ $t('Minute') }})</span>
           </div>
         </m-list-box>
 
@@ -173,19 +177,19 @@
             nodeData.taskType !== 'SWITCH'
           "
         >
-          <div slot="text">{{ $t("Delay execution time") }}</div>
+          <div slot="text">{{ $t('Delay execution time') }}</div>
           <div slot="content">
             <m-select-input
               v-model="delayTime"
               :list="[0, 1, 5, 10]"
             ></m-select-input>
-            <span>({{ $t("Minute") }})</span>
+            <span>({{ $t('Minute') }})</span>
           </div>
         </m-list-box>
 
         <!-- Branch flow -->
         <m-list-box v-if="nodeData.taskType === 'CONDITIONS'">
-          <div slot="text">{{ $t("State") }}</div>
+          <div slot="text">{{ $t('State') }}</div>
           <div slot="content">
             <span class="label-box" style="width: 193px; display: inline-block">
               <el-select
@@ -203,7 +207,7 @@
               </el-select>
             </span>
             <span class="text-b" style="padding-left: 38px">{{
-              $t("Branch flow")
+              $t('Branch flow')
             }}</span>
             <el-select
               style="width: 157px"
@@ -222,7 +226,7 @@
           </div>
         </m-list-box>
         <m-list-box v-if="nodeData.taskType === 'CONDITIONS'">
-          <div slot="text">{{ $t("State") }}</div>
+          <div slot="text">{{ $t('State') }}</div>
           <div slot="content">
             <span class="label-box" style="width: 193px; display: inline-block">
               <el-select
@@ -240,7 +244,7 @@
               </el-select>
             </span>
             <span class="text-b" style="padding-left: 38px">{{
-              $t("Branch flow")
+              $t('Branch flow')
             }}</span>
             <el-select
               style="width: 157px"
@@ -429,7 +433,7 @@
     <div class="bottom-box">
       <div class="submit" style="background: #fff">
         <el-button type="text" size="small" id="cancelBtn">
-          {{ $t("Cancel") }}
+          {{ $t('Cancel') }}
         </el-button>
         <el-button
           type="primary"
@@ -439,7 +443,7 @@
           @click="ok()"
           :disabled="isDetails"
           id="button-submit"
-          >{{ spinnerLoading ? $t("Loading...") : $t("Confirm") }}
+        >{{ spinnerLoading ? $t('Loading...') : $t('Confirm') }}
         </el-button>
       </div>
     </div>
@@ -452,6 +456,7 @@
   import mMr from './tasks/mr'
   import mSql from './tasks/sql'
   import i18n from '@/module/i18n'
+  import { findLocale } from '@/module/i18n/config'
   import mListBox from './tasks/_source/listBox'
   import mShell from './tasks/shell'
   import mWaterdrop from './tasks/waterdrop'
@@ -550,7 +555,18 @@
         backfillRefresh: true,
         // whether this is a new Task
         isNewCreate: true,
-        tasksTypeList: Object.keys(tasksType)
+        tasksTypeList: Object.keys(tasksType),
+        helpUrlEnable: function (typeKey) {
+          let type = tasksType[typeKey]
+          if (type) {
+            let disabled = !!type.helperLinkDisable
+            return !disabled
+          }
+          return false
+        },
+        helpUrl: function (tskType) {
+          return 'https://dolphinscheduler.apache.org/' + findLocale(i18n.globalScope.LOCALE).helperContext + '/docs/latest/user_doc/guide/task/' + tskType.toLowerCase() + '.html'
+        }
       }
     },
     provide () {
@@ -641,7 +657,7 @@
        * Click external to close the current component
        */
       _handleClose () {
-      // this.close()
+        // this.close()
       },
       /**
        * Jump to task instance
@@ -993,9 +1009,12 @@
         self.close()
       })
     },
-    updated () {},
-    beforeDestroy () {},
-    destroyed () {},
+    updated () {
+    },
+    beforeDestroy () {
+    },
+    destroyed () {
+    },
     computed: {
       ...mapState('dag', ['processListS', 'taskInstances']),
       /**
@@ -1045,16 +1064,17 @@
       mWorkerGroups,
       mRelatedEnvironment,
       mPreTasks
-    // ReferenceFromTask
+      // ReferenceFromTask
     }
   }
 </script>
 
 <style lang="scss" rel="stylesheet/scss">
-@import "./formModel";
-.ans-radio-disabled {
-  .ans-radio-inner:after {
-    background-color: #6f8391;
+  @import "./formModel";
+
+  .ans-radio-disabled {
+    .ans-radio-inner:after {
+      background-color: #6f8391;
+    }
   }
-}
 </style>
