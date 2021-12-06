@@ -28,9 +28,10 @@ import static com.cronutils.model.CronType.QUARTZ;
 import org.apache.dolphinscheduler.common.Constants;
 import org.apache.dolphinscheduler.common.enums.CycleEnum;
 import org.apache.dolphinscheduler.common.thread.Stopper;
-import org.apache.dolphinscheduler.common.utils.CollectionUtils;
 import org.apache.dolphinscheduler.common.utils.DateUtils;
 import org.apache.dolphinscheduler.dao.entity.Schedule;
+
+import org.apache.commons.collections.CollectionUtils;
 
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -185,6 +186,12 @@ public class CronUtils {
      */
     public static List<Date> getSelfFireDateList(final Date startTime, final Date endTime, final List<Schedule> schedules) {
         List<Date> result = new ArrayList<>();
+        if(startTime.equals(endTime)){
+            result.add(startTime);
+            return result;
+        }
+
+        // support left closed and right open time interval (startDate <= N < endDate)
         Date from = new Date(startTime.getTime() - Constants.SECOND_TIME_MILLIS);
         Date to = new Date(endTime.getTime() - Constants.SECOND_TIME_MILLIS);
 

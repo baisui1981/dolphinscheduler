@@ -17,11 +17,13 @@
 
 package org.apache.dolphinscheduler.plugin.task.sql;
 
+import org.apache.dolphinscheduler.plugin.datasource.api.plugin.DataSourceClientProvider;
+import org.apache.dolphinscheduler.plugin.datasource.api.utils.CommonUtils;
+import org.apache.dolphinscheduler.plugin.datasource.api.utils.DatasourceUtil;
 import org.apache.dolphinscheduler.plugin.task.api.AbstractTaskExecutor;
 import org.apache.dolphinscheduler.plugin.task.api.TaskException;
-import org.apache.dolphinscheduler.plugin.task.datasource.BaseConnectionParam;
-import org.apache.dolphinscheduler.plugin.task.datasource.DatasourceUtil;
 import org.apache.dolphinscheduler.plugin.task.util.MapUtils;
+import org.apache.dolphinscheduler.spi.datasource.BaseConnectionParam;
 import org.apache.dolphinscheduler.spi.enums.DbType;
 import org.apache.dolphinscheduler.spi.enums.TaskTimeoutStrategy;
 import org.apache.dolphinscheduler.spi.task.AbstractParameters;
@@ -34,9 +36,10 @@ import org.apache.dolphinscheduler.spi.task.paramparser.ParameterUtils;
 import org.apache.dolphinscheduler.spi.task.request.SQLTaskExecutionContext;
 import org.apache.dolphinscheduler.spi.task.request.TaskRequest;
 import org.apache.dolphinscheduler.spi.task.request.UdfFuncRequest;
-import org.apache.dolphinscheduler.spi.utils.CollectionUtils;
 import org.apache.dolphinscheduler.spi.utils.JSONUtils;
 import org.apache.dolphinscheduler.spi.utils.StringUtils;
+
+import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -49,7 +52,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -84,7 +89,7 @@ public class SqlTask extends AbstractTaskExecutor {
     /**
      * default query sql limit
      */
-    private static final int LIMIT = 10000;
+    private static final int QUERY_LIMIT = 10000;
 
     /**
      * Abstract Yarn Task
@@ -146,7 +151,7 @@ public class SqlTask extends AbstractTaskExecutor {
                     .collect(Collectors.toList());
 
             List<String> createFuncs = createFuncs(sqlTaskExecutionContext.getUdfFuncTenantCodeMap(),
-                    logger);
+                    sqlTaskExecutionContext.getDefaultFS(), logger);
 
             // execute sql task
             executeFuncAndSql(mainSqlBinds, preStatementSqlBinds, postStatementSqlBinds, createFuncs);
@@ -178,7 +183,7 @@ public class SqlTask extends AbstractTaskExecutor {
         try {
 
             // create connection
-            connection = DatasourceUtil.getConnection(DbType.valueOf(sqlParameters.getType()), baseConnectionParam);
+            connection = DataSourceClientProvider.getInstance().getConnection(DbType.valueOf(sqlParameters.getType()), baseConnectionParam);
             // create temp function
             if (CollectionUtils.isNotEmpty(createFuncs)) {
                 createTempFunction(connection, createFuncs);
@@ -239,7 +244,7 @@ public class SqlTask extends AbstractTaskExecutor {
             int num = md.getColumnCount();
 
             int rowCount = 0;
-            int limit = sqlParameters.getLimit() == 0 ? LIMIT : sqlParameters.getLimit();
+            int limit = sqlParameters.getLimit() == 0 ? QUERY_LIMIT : sqlParameters.getLimit();
 
             while (rowCount < limit && resultSet.next()) {
                 ObjectNode mapOfColValues = JSONUtils.createObjectNode();
@@ -249,13 +254,17 @@ public class SqlTask extends AbstractTaskExecutor {
                 resultJSONArray.add(mapOfColValues);
                 rowCount++;
             }
-
             int displayRows = sqlParameters.getDisplayRows() > 0 ? sqlParameters.getDisplayRows() : TaskConstants.DEFAULT_DISPLAY_ROWS;
             displayRows = Math.min(displayRows, resultJSONArray.size());
             logger.info("display sql result {} rows as follows:", displayRows);
             for (int i = 0; i < displayRows; i++) {
                 String row = JSONUtils.toJsonString(resultJSONArray.get(i));
                 logger.info("row {} : {}", i + 1, row);
+            }
+            if (resultSet.next()) {
+                logger.info("sql result limit : {} exceeding results are filtered", limit);
+                String log = String.format("sql result limit : %d exceeding results are filtered", limit);
+                resultJSONArray.add(JSONUtils.toJsonNode(log));
             }
         }
         String result = JSONUtils.toJsonString(resultJSONArray);
@@ -280,6 +289,7 @@ public class SqlTask extends AbstractTaskExecutor {
         taskAlertInfo.setAlertGroupId(groupId);
         taskAlertInfo.setContent(content);
         taskAlertInfo.setTitle(title);
+        setTaskAlertInfo(taskAlertInfo);
     }
 
     /**
@@ -513,13 +523,17 @@ public class SqlTask extends AbstractTaskExecutor {
      * @param logger logger
      * @return create function list
      */
-    public static List<String> createFuncs(Map<UdfFuncRequest, String> udfFuncTenantCodeMap, Logger logger) {
+    public static List<String> createFuncs(Map<UdfFuncRequest, String> udfFuncTenantCodeMap, String defaultFS, Logger logger) {
 
         if (MapUtils.isEmpty(udfFuncTenantCodeMap)) {
             logger.info("can't find udf function resource");
             return null;
         }
         List<String> funcList = new ArrayList<>();
+
+        // build jar sql
+        buildJarSql(funcList, udfFuncTenantCodeMap, defaultFS);
+
         // build temp function sql
         buildTempFuncSql(funcList, new ArrayList<>(udfFuncTenantCodeMap.keySet()));
 
@@ -538,6 +552,23 @@ public class SqlTask extends AbstractTaskExecutor {
                 sqls.add(MessageFormat
                         .format(CREATE_FUNCTION_FORMAT, udfFuncRequest.getFuncName(), udfFuncRequest.getClassName()));
             }
+        }
+    }
+
+    /**
+     * build jar sql
+     * @param sqls                  sql list
+     * @param udfFuncTenantCodeMap  key is udf function,value is tenant code
+     */
+    private static void buildJarSql(List<String> sqls, Map<UdfFuncRequest,String> udfFuncTenantCodeMap, String defaultFS) {
+        String resourceFullName;
+        Set<Entry<UdfFuncRequest, String>> entries = udfFuncTenantCodeMap.entrySet();
+        for (Map.Entry<UdfFuncRequest, String> entry : entries) {
+            String prefixPath = defaultFS.startsWith("file://") ? "file://" : defaultFS;
+            String uploadPath = CommonUtils.getHdfsUdfDir(entry.getValue());
+            resourceFullName = entry.getKey().getResourceName();
+            resourceFullName = resourceFullName.startsWith("/") ? resourceFullName : String.format("/%s", resourceFullName);
+            sqls.add(String.format("add jar %s%s%s", prefixPath, uploadPath, resourceFullName));
         }
     }
 

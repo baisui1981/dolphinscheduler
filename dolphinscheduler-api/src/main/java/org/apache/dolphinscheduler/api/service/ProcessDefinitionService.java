@@ -18,6 +18,7 @@
 package org.apache.dolphinscheduler.api.service;
 
 import org.apache.dolphinscheduler.api.utils.Result;
+import org.apache.dolphinscheduler.common.enums.ProcessExecutionTypeEnum;
 import org.apache.dolphinscheduler.common.enums.ReleaseState;
 import org.apache.dolphinscheduler.dao.entity.User;
 
@@ -56,7 +57,8 @@ public interface ProcessDefinitionService {
                                                 int timeout,
                                                 String tenantCode,
                                                 String taskRelationJson,
-                                                String taskDefinitionJson);
+                                                String taskDefinitionJson,
+                                                ProcessExecutionTypeEnum executionType);
 
     /**
      * query process definition list
@@ -67,6 +69,16 @@ public interface ProcessDefinitionService {
      */
     Map<String, Object> queryProcessDefinitionList(User loginUser,
                                                    long projectCode);
+
+    /**
+     * query process definition simple list
+     *
+     * @param loginUser login user
+     * @param projectCode project code
+     * @return definition simple list
+     */
+    Map<String, Object> queryProcessDefinitionSimpleList(User loginUser,
+                                                         long projectCode);
 
     /**
      * query process definition list paging
@@ -164,7 +176,8 @@ public interface ProcessDefinitionService {
                                                 int timeout,
                                                 String tenantCode,
                                                 String taskRelationJson,
-                                                String taskDefinitionJson);
+                                                String taskDefinitionJson,
+                                                ProcessExecutionTypeEnum executionType);
 
     /**
      * verify process definition name unique
@@ -272,11 +285,12 @@ public interface ProcessDefinitionService {
     /**
      * Encapsulates the TreeView structure
      *
+     * @param projectCode project code
      * @param code process definition code
      * @param limit limit
      * @return tree view json data
      */
-    Map<String, Object> viewTree(long code, Integer limit);
+    Map<String, Object> viewTree(long projectCode, long code, Integer limit);
 
     /**
      * switch the defined process definition version
@@ -322,5 +336,67 @@ public interface ProcessDefinitionService {
                                                        long code,
                                                        int version);
 
+    /**
+     * create empty process definition
+     *
+     * @param loginUser login user
+     * @param projectCode project code
+     * @param name process definition name
+     * @param description description
+     * @param globalParams globalParams
+     * @param timeout timeout
+     * @param tenantCode tenantCode
+     * @param scheduleJson scheduleJson
+     * @return process definition code
+     */
+    Map<String, Object> createEmptyProcessDefinition(User loginUser,
+                                                     long projectCode,
+                                                     String name,
+                                                     String description,
+                                                     String globalParams,
+                                                     int timeout,
+                                                     String tenantCode,
+                                                     String scheduleJson,
+                                                     ProcessExecutionTypeEnum executionType);
+
+    /**
+     * update process definition basic info
+     *
+     * @param loginUser login user
+     * @param projectCode project code
+     * @param name process definition name
+     * @param code process definition code
+     * @param description description
+     * @param globalParams globalParams
+     * @param timeout timeout
+     * @param tenantCode tenantCode
+     * @param scheduleJson scheduleJson
+     * @param executionType executionType
+     * @return update result code
+     */
+    Map<String, Object> updateProcessDefinitionBasicInfo(User loginUser,
+                                                         long projectCode,
+                                                         String name,
+                                                         long code,
+                                                         String description,
+                                                         String globalParams,
+                                                         int timeout,
+                                                         String tenantCode,
+                                                         String scheduleJson,
+                                                         ProcessExecutionTypeEnum executionType);
+
+    /**
+     * release process definition and schedule
+     *
+     * @param loginUser login user
+     * @param projectCode project code
+     * @param code process definition code
+     * @param releaseState releaseState
+     * @return update result code
+     */
+    Map<String, Object> releaseWorkflowAndSchedule(User loginUser,
+                                                   long projectCode,
+                                                   long code,
+                                                   ReleaseState releaseState);
 }
 

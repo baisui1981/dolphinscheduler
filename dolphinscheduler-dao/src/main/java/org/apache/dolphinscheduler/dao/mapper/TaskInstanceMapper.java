@@ -51,6 +51,9 @@ public interface TaskInstanceMapper extends BaseMapper<TaskInstance> {
     TaskInstance queryByInstanceIdAndName(@Param("processInstanceId") int processInstanceId,
                                           @Param("name") String name);
 
+    TaskInstance queryByInstanceIdAndCode(@Param("processInstanceId") int processInstanceId,
+        @Param("taskCode") Long taskCode);
+
     Integer countTask(@Param("projectCodes") Long[] projectCodes,
                       @Param("taskIds") int[] taskIds);
 
@@ -70,4 +73,6 @@ public interface TaskInstanceMapper extends BaseMapper<TaskInstance> {
                                                     @Param("startTime") Date startTime,
                                                     @Param("endTime") Date endTime
     );
+
+    List<TaskInstance> loadAllInfosNoRelease(@Param("processInstanceId") int processInstanceId,@Param("status") int status);
 }

@@ -32,7 +32,6 @@ import org.apache.dolphinscheduler.common.utils.JSONUtils;
 import org.apache.dolphinscheduler.common.utils.LoggerUtils;
 import org.apache.dolphinscheduler.common.utils.OSUtils;
 import org.apache.dolphinscheduler.common.utils.RetryerUtils;
-import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.remote.command.Command;
 import org.apache.dolphinscheduler.remote.command.TaskExecuteAckCommand;
 import org.apache.dolphinscheduler.remote.command.TaskExecuteResponseCommand;
@@ -41,10 +40,7 @@ import org.apache.dolphinscheduler.server.worker.cache.ResponceCache;
 import org.apache.dolphinscheduler.server.worker.plugin.TaskPluginManager;
 import org.apache.dolphinscheduler.server.worker.processor.TaskCallbackService;
 import org.apache.dolphinscheduler.service.alert.AlertClientService;
-import org.apache.dolphinscheduler.service.bean.SpringApplicationContext;
-import org.apache.dolphinscheduler.service.process.ProcessService;
 import org.apache.dolphinscheduler.service.queue.entity.TaskExecutionContext;
-import org.apache.dolphinscheduler.spi.exception.PluginNotFoundException;
 import org.apache.dolphinscheduler.spi.task.AbstractTask;
 import org.apache.dolphinscheduler.spi.task.TaskAlertInfo;
 import org.apache.dolphinscheduler.spi.task.TaskChannel;
@@ -97,26 +93,11 @@ public class TaskExecuteThread implements Runnable, Delayed {
     private TaskCallbackService taskCallbackService;
 
     /**
-     * taskExecutionContextCacheManager
-     */
-    private TaskExecutionContextCacheManager taskExecutionContextCacheManager;
-
-    /**
-     * task logger
-     */
-    private Logger taskLogger;
-
-    /**
      * alert client server
      */
     private AlertClientService alertClientService;
 
     private TaskPluginManager taskPluginManager;
-
-    /**
-     * process database access
-     */
-    protected ProcessService processService;
 
     /**
      * constructor
@@ -130,7 +111,6 @@ public class TaskExecuteThread implements Runnable, Delayed {
         this.taskExecutionContext = taskExecutionContext;
         this.taskCallbackService = taskCallbackService;
         this.alertClientService = alertClientService;
-        this.processService = SpringApplicationContext.getBean(ProcessService.class);
     }
 
     public TaskExecuteThread(TaskExecutionContext taskExecutionContext,
@@ -141,19 +121,26 @@ public class TaskExecuteThread implements Runnable, Delayed {
         this.taskCallbackService = taskCallbackService;
         this.alertClientService = alertClientService;
         this.taskPluginManager = taskPluginManager;
-        this.processService = SpringApplicationContext.getBean(ProcessService.class);
     }
 
     @Override
     public void run() {
-
         TaskExecuteResponseCommand responseCommand = new TaskExecuteResponseCommand(taskExecutionContext.getTaskInstanceId(), taskExecutionContext.getProcessInstanceId());
+        if (Constants.DRY_RUN_FLAG_YES == taskExecutionContext.getDryRun()) {
+            responseCommand.setStatus(ExecutionStatus.SUCCESS.getCode());
+            responseCommand.setEndTime(new Date());
+            TaskExecutionContextCacheManager.removeByTaskInstanceId(taskExecutionContext.getTaskInstanceId());
+            ResponceCache.get().cache(taskExecutionContext.getTaskInstanceId(), responseCommand.convert2Command(), Event.RESULT);
+            taskCallbackService.sendResult(taskExecutionContext.getTaskInstanceId(), responseCommand.convert2Command());
+            return;
+        }
+
         try {
             logger.info("script path : {}", taskExecutionContext.getExecutePath());
             // check if the OS user exists
             if (!OSUtils.getUserList().contains(taskExecutionContext.getTenantCode())) {
                 String errorLog = String.format("tenantCode: %s does not exist", taskExecutionContext.getTenantCode());
-                taskLogger.error(errorLog);
+                logger.error(errorLog);
                 responseCommand.setStatus(ExecutionStatus.FAILURE.getCode());
                 responseCommand.setEndTime(new Date());
                 return;
@@ -167,14 +154,8 @@ public class TaskExecuteThread implements Runnable, Delayed {
             }
             logger.info("the task begins to execute. task instance id: {}", taskExecutionContext.getTaskInstanceId());
 
-            TaskInstance taskInstance = processService.findTaskInstanceById(taskExecutionContext.getTaskInstanceId());
-            int dryRun = taskInstance.getDryRun();
             // copy hdfs/minio file to local
-            if (dryRun == Constants.DRY_RUN_FLAG_NO) {
-                downloadResource(taskExecutionContext.getExecutePath(),
-                        taskExecutionContext.getResources(),
-                        logger);
-            }
+            downloadResource(taskExecutionContext.getExecutePath(), taskExecutionContext.getResources(), logger);
 
             taskExecutionContext.setEnvFile(CommonUtils.getSystemEnvPath());
             taskExecutionContext.setDefinedParams(getGlobalParamsMap());
@@ -187,10 +168,11 @@ public class TaskExecuteThread implements Runnable, Delayed {
 
             TaskChannel taskChannel = taskPluginManager.getTaskChannelMap().get(taskExecutionContext.getTaskType());
             if (null == taskChannel) {
-                throw new PluginNotFoundException(String.format("%s Task Plugin Not Found,Please Check Config File.", taskExecutionContext.getTaskType()));
+                throw new RuntimeException(String.format("%s Task Plugin Not Found,Please Check Config File.", taskExecutionContext.getTaskType()));
             }
             TaskRequest taskRequest = JSONUtils.parseObject(JSONUtils.toJsonString(taskExecutionContext), TaskRequest.class);
             String taskLogName = LoggerUtils.buildTaskId(LoggerUtils.TASK_LOGGER_INFO_PREFIX,
+                    taskExecutionContext.getFirstSubmitTime(),
                     taskExecutionContext.getProcessDefineCode(),
                     taskExecutionContext.getProcessDefineVersion(),
                     taskExecutionContext.getProcessInstanceId(),
@@ -198,31 +180,28 @@ public class TaskExecuteThread implements Runnable, Delayed {
             taskRequest.setTaskLogName(taskLogName);
 
             task = taskChannel.createTask(taskRequest);
+
             // task init
             this.task.init();
+
             //init varPool
             this.task.getParameters().setVarPool(taskExecutionContext.getVarPool());
 
-            if (dryRun == Constants.DRY_RUN_FLAG_NO) {
-                // task handle
-                this.task.handle();
+            // task handle
+            this.task.handle();
 
-                // task result process
-                if (this.task.getNeedAlert()) {
-                    sendAlert(this.task.getTaskAlertInfo());
-                }
-                responseCommand.setStatus(this.task.getExitStatus().getCode());
-            } else {
-                responseCommand.setStatus(ExecutionStatus.SUCCESS.getCode());
-                task.setExitStatusCode(Constants.EXIT_CODE_SUCCESS);
+            // task result process
+            if (this.task.getNeedAlert()) {
+                sendAlert(this.task.getTaskAlertInfo());
             }
+
+            responseCommand.setStatus(this.task.getExitStatus().getCode());
             responseCommand.setEndTime(new Date());
             responseCommand.setProcessId(this.task.getProcessId());
             responseCommand.setAppIds(this.task.getAppIds());
             responseCommand.setVarPool(JSONUtils.toJsonString(this.task.getParameters().getVarPool()));
             logger.info("task instance id : {},task final status : {}", taskExecutionContext.getTaskInstanceId(), this.task.getExitStatus());
         } catch (Throwable e) {
-
             logger.error("task scheduler failure", e);
             kill();
             responseCommand.setStatus(ExecutionStatus.FAILURE.getCode());
@@ -294,10 +273,7 @@ public class TaskExecuteThread implements Runnable, Delayed {
         if (task != null) {
             try {
                 task.cancelApplication(true);
-                TaskInstance taskInstance = processService.findTaskInstanceById(taskExecutionContext.getTaskInstanceId());
-                if (taskInstance != null) {
-                    ProcessUtils.killYarnJob(taskExecutionContext);
-                }
+                ProcessUtils.killYarnJob(taskExecutionContext);
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
             }

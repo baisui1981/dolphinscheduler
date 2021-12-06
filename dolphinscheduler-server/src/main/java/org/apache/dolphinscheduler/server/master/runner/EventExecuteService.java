@@ -28,6 +28,7 @@ import org.apache.dolphinscheduler.dao.entity.ProcessInstance;
 import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.remote.command.StateEventChangeCommand;
 import org.apache.dolphinscheduler.remote.processor.StateEventCallbackService;
+import org.apache.dolphinscheduler.server.master.cache.ProcessInstanceExecCacheManager;
 import org.apache.dolphinscheduler.server.master.config.MasterConfig;
 import org.apache.dolphinscheduler.service.bean.SpringApplicationContext;
 import org.apache.dolphinscheduler.service.process.ProcessService;
@@ -72,16 +73,15 @@ public class EventExecuteService extends Thread {
      */
     private StateEventCallbackService stateEventCallbackService;
 
+    @Autowired
+    private ProcessInstanceExecCacheManager processInstanceExecCacheManager;
 
-    private ConcurrentHashMap<Integer, WorkflowExecuteThread> processInstanceExecMaps;
     private ConcurrentHashMap<String, WorkflowExecuteThread> eventHandlerMap = new ConcurrentHashMap();
     ListeningExecutorService listeningExecutorService;
 
-    public void init(ConcurrentHashMap<Integer, WorkflowExecuteThread> processInstanceExecMaps) {
+    public void init() {
 
-        eventExecService = ThreadUtils.newDaemonFixedThreadExecutor("MasterEventExecution", masterConfig.getMasterExecThreads());
-
-        this.processInstanceExecMaps = processInstanceExecMaps;
+        eventExecService = ThreadUtils.newDaemonFixedThreadExecutor("MasterEventExecution", masterConfig.getExecThreads());
 
         listeningExecutorService = MoreExecutors.listeningDecorator(eventExecService);
         this.stateEventCallbackService = SpringApplicationContext.getBean(StateEventCallbackService.class);
@@ -115,14 +115,15 @@ public class EventExecuteService extends Thread {
     }
 
     private void eventHandler() {
-        for (WorkflowExecuteThread workflowExecuteThread : this.processInstanceExecMaps.values()) {
+        for (WorkflowExecuteThread workflowExecuteThread : this.processInstanceExecCacheManager.getAll()) {
             if (workflowExecuteThread.eventSize() == 0
                     || StringUtils.isEmpty(workflowExecuteThread.getKey())
+                    || !workflowExecuteThread.isStart()
                     || eventHandlerMap.containsKey(workflowExecuteThread.getKey())) {
                 continue;
             }
             int processInstanceId = workflowExecuteThread.getProcessInstance().getId();
-            logger.info("handle process instance : {} events, count:{}",
+            logger.info("handle process instance : {} , events count:{}",
                     processInstanceId,
                     workflowExecuteThread.eventSize());
             logger.info("already exists handler process size:{}", this.eventHandlerMap.size());
@@ -132,13 +133,13 @@ public class EventExecuteService extends Thread {
                 @Override
                 public void onSuccess(Object o) {
                     if (workflowExecuteThread.workFlowFinish()) {
-                        processInstanceExecMaps.remove(processInstanceId);
+                        processInstanceExecCacheManager.removeByProcessInstanceId(processInstanceId);
                         notifyProcessChanged();
                         logger.info("process instance {} finished.", processInstanceId);
                     }
                     if (workflowExecuteThread.getProcessInstance().getId() != processInstanceId) {
-                        processInstanceExecMaps.remove(processInstanceId);
-                        processInstanceExecMaps.put(workflowExecuteThread.getProcessInstance().getId(), workflowExecuteThread);
+                        processInstanceExecCacheManager.removeByProcessInstanceId(processInstanceId);
+                        processInstanceExecCacheManager.cache(workflowExecuteThread.getProcessInstance().getId(), workflowExecuteThread);
 
                     }
                     eventHandlerMap.remove(workflowExecuteThread.getKey());
@@ -160,10 +161,10 @@ public class EventExecuteService extends Thread {
 
                 private void notifyMyself(ProcessInstance processInstance, TaskInstance taskInstance) {
                     logger.info("notify process {} task {} state change", processInstance.getId(), taskInstance.getId());
-                    if (!processInstanceExecMaps.containsKey(processInstance.getId())) {
+                    if (!processInstanceExecCacheManager.contains(processInstance.getId())) {
                         return;
                     }
-                    WorkflowExecuteThread workflowExecuteThreadNotify = processInstanceExecMaps.get(processInstance.getId());
+                    WorkflowExecuteThread workflowExecuteThreadNotify = processInstanceExecCacheManager.getByProcessInstanceId(processInstance.getId());
                     StateEvent stateEvent = new StateEvent();
                     stateEvent.setTaskInstanceId(taskInstance.getId());
                     stateEvent.setType(StateEventType.TASK_STATE_CHANGE);
@@ -186,12 +187,13 @@ public class EventExecuteService extends Thread {
                     StateEventChangeCommand stateEventChangeCommand = new StateEventChangeCommand(
                             processInstanceId, 0, workflowExecuteThread.getProcessInstance().getState(), processInstance.getId(), taskInstance.getId()
                     );
-
                     stateEventCallbackService.sendResult(address, port, stateEventChangeCommand.convert2Command());
                 }
 
                 @Override
                 public void onFailure(Throwable throwable) {
+                    logger.info("handle events {} failed.", processInstanceId);
+                    logger.info("handle events failed.", throwable);
                 }
             };
             Futures.addCallback(future, futureCallback, this.listeningExecutorService);

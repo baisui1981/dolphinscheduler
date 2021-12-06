@@ -18,10 +18,9 @@
 package org.apache.dolphinscheduler.server.master.runner.task;
 
 import org.apache.dolphinscheduler.common.enums.CommandType;
-import org.apache.dolphinscheduler.common.enums.DbType;
 import org.apache.dolphinscheduler.common.enums.ExecutionStatus;
 import org.apache.dolphinscheduler.common.enums.Priority;
-import org.apache.dolphinscheduler.common.enums.ResourceType;
+import org.apache.dolphinscheduler.spi.enums.ResourceType;
 import org.apache.dolphinscheduler.common.enums.TaskType;
 import org.apache.dolphinscheduler.common.enums.TimeoutFlag;
 import org.apache.dolphinscheduler.dao.entity.DataSource;
@@ -33,6 +32,7 @@ import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.dao.entity.Tenant;
 import org.apache.dolphinscheduler.service.process.ProcessService;
 import org.apache.dolphinscheduler.service.queue.entity.TaskExecutionContext;
+import org.apache.dolphinscheduler.spi.enums.DbType;
 import org.apache.dolphinscheduler.spi.task.request.DataxTaskExecutionContext;
 
 import java.util.ArrayList;
@@ -86,7 +86,6 @@ public class CommonTaskProcessorTest {
         taskDefinition.setTimeoutFlag(TimeoutFlag.OPEN);
         taskInstance.setTaskDefine(taskDefinition);
 
-        Mockito.doReturn(taskInstance).when(processService).getTaskInstanceDetailByTaskId(1);
         Mockito.doReturn(taskInstance).when(processService).findTaskInstanceById(1);
 
         TaskExecutionContext taskExecutionContext = commonTaskProcessor.getTaskExecutionContext(taskInstance);
